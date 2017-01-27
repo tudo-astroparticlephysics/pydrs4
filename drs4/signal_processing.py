@@ -1,7 +1,7 @@
 from scipy.signal import butter, filtfilt
 
 
-def butter_lowpass(cutoff_, sample_freq, order=5):
+def butter_lowpass(cutoff_freq, sample_freq, order=5):
     '''
     See http://stackoverflow.com/a/25192640/3838691
     '''
@@ -9,6 +9,7 @@ def butter_lowpass(cutoff_, sample_freq, order=5):
     normal_cutoff = cutoff_freq / nyq
     b, a = butter(order, normal_cutoff, btype='low', analog=False)
     return b, a
+
 
 def butter_lowpass_filter(data, cutoff_freq, sample_freq, order=5):
     '''
