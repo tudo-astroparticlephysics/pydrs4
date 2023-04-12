@@ -10,10 +10,9 @@ Event = namedtuple(
     [
         'event_id',
         'timestamp',
-        'range_center',
-        'adc_data',
+        'voltage_data',
+        'time_data',
         'scalers',
-        'trigger_cells',
     ]
 )
 
@@ -28,8 +27,8 @@ class DRS4BinaryFile(BufferedReader):
         assert self.read(4) == b'TIME', 'File does not contain TIME header'
 
         self.board_ids = []
-        self.time_widths = {}
         self.channels = {}
+        self.time_widths = {}
 
         header = self.read(4)
         while header.startswith(b'B#'):
@@ -73,6 +72,8 @@ class DRS4BinaryFile(BufferedReader):
         scalers = {}
         trigger_cells = {}
         adc_data = {}
+        voltage_data = {}
+        time_data = {}
 
         for board_id, channels in self.channels.items():
             assert self.read(2) == b'B#'
@@ -83,20 +84,23 @@ class DRS4BinaryFile(BufferedReader):
 
             scalers[board_id] = {}
             adc_data[board_id] = {}
+            voltage_data[board_id] = {}
+            time_data[board_id] = {}
 
             for channel in channels:
                 assert self.read(4) == 'C{:03d}'.format(channel).encode('ascii')
 
                 scalers[board_id][channel], = struct.unpack('I', self.read(4))
                 adc_data[board_id][channel] = self._read_adc_data()
+                voltage_data[board_id][channel] = [ (adc/(2**16) + range_center - 0.5) for adc in adc_data[board_id][channel]] #V
+                time_data[board_id][channel] = self._calibrate_time(trigger_cells[board_id],self.time_widths[board_id][channel]) #ns
 
         return Event(
             event_id=event_id,
             timestamp=timestamp,
-            range_center=range_center,
-            adc_data=adc_data,
+            voltage_data=voltage_data,
             scalers=scalers,
-            trigger_cells=trigger_cells,
+            time_data=time_data,
         )
 
     def _read_timewidth_array(self):
@@ -104,5 +108,19 @@ class DRS4BinaryFile(BufferedReader):
 
     def _read_adc_data(self):
         return np.frombuffer(self.read(1024 * 2), 'uint16')
+
+    def _calibrate_time(self,trigcell,twidths):
+        t_calib = twidths
+        # Make numpy array
+        t_calib = np.array(t_calib)
+        # Offset to trigger cell
+        t_calib = np.roll(t_calib,trigcell)
+        # Add zero time and remove last element
+        t_calib = np.insert(t_calib, 0, 0., axis=0)
+        t_calib = np.delete(t_calib,-1)
+        # Compute calibrated sample times
+        t_calib = np.cumsum(t_calib)
+
+        return t_calib
 
 
